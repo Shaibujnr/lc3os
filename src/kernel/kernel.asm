@@ -16,7 +16,7 @@
     .FILL BAD_TRAP ; x000D
     .FILL BAD_TRAP ; x000E
     .FILL BAD_TRAP ; x000F
-    .FILL BAD_TRAP ; x0010
+    .FILL TRAP_PUTS ; x0010
     .FILL BAD_TRAP ; x0011
     .FILL BAD_TRAP ; x0012
     .FILL BAD_TRAP ; x0013
@@ -514,11 +514,113 @@
     .FILL BAD_INT ; x01FD
     .FILL BAD_INT ; x01FE
     .FILL BAD_INT ; x01FF
-; Os starts booting here
-; Ideally we want our OS to setup memory protection
-; Setup the OS stack
-; Start executing user code
-OS_BOOT ADD R0, R0, #0 ; Add 0 to R0
+
+
+OS_BOOT 
+        ; setup memory protection
+        LD R0 MPR_INIT  ; load the value we want to save in MPR into R0
+        STI	R0,	MPR_LOC ; store the value stored in R0 to where MPR_LOC is pointing to
+
+        ; set timer interval
+        LD R0 TMI_INIT
+        STI R0, TMI_LOC
+
+        ; jmp to user code
+        LD R0, USER_CODE_ADDR ; load the user address into R0
+        JMPT R0 ; jump to the user address code
+
+
+USER_CODE_ADDR  .FILL x3000     ; User code address
+PSR_LOC         .FILL xFFFC     ; PSR_LOC pointer to PSR
+MPR_LOC         .FILL xFE12     ; MPR_LOC pointer to MPR
+TMI_LOC         .FILL xFE0A     ; TMI_LOC pointer to TMI register
+KBSR_LOC	    .FILL xFE00		; keyboard status register
+KBDR_LOC	    .FILL xFE02		; keyboard data register
+DSR_LOC	        .FILL xFE04		; display status register
+DDR_LOC	        .FILL xFE06		; display data register
+TMR_LOC	        .FILL xFE08		; timer register
+MCR_LOC	        .FILL xFFFE		; machine control register
+
+; MPR INIT holds the value that should be loaded by the OS into the MPR
+MPR_INIT .FILL x0FF8 ; user can only access from x3000 to xbfff
+; TMI_INIT value that should be loaded into TMI register
+TMI_INIT .FILL #1000 ; interval every 10 milli seconds
+; KBSR_INIT value that should be loaded into KBSR
+KBSR_INIT .FILL x4000 ; enable interrupt
+
+; push data onto the stack
+; R6 holds the location of the top of the stack (i.e stack pointer)
+; to push we decrease the stack pointer by 1 and add the value 
+; to be pushed to the location.
+PUSH    ADD	R6,	R6,	#-1 ; store the next lower memory location in R6
+        STR R5,	R6, #0 ; store R5 in the top of the stack
+        RET ; return from the call to push
+
+; pop data from the stack
+; R6 holds the top of the stack (i.e stack pointer)
+; to pop the data we load from the top of the stack into R5
+; and we increase the value of R6 by 1 showing the stack pointer has decrased
+POP     LDR	R5,	R6,	#0 ; load into RO whatever memory adress R6 is pointing to
+        ADD R6, R6, #1 ; increase stack pointer
+        RET ; return from the call to pop
+
+TRAP_PUTS
+        ; 1.  save R5 in memory
+        ; 2.  save R1 on supervisor stack
+        ; 3.  save R2 on supervisor stack
+        ; 4.  save R3 on supervisor stack
+        ; 4.  minus R0 by  1 and store in R1
+        ; 5.  Add 1 to R1
+        ; 6.  Load character stored in location pointed to by R1 in R2
+        ; 7.  Check if character is string termination
+        ; 8.  If it is termination, perform return routine
+        ; 9.  If not, load DSR into R3
+        ; 10. Check if DSR is ready
+        ; 11. If it is ready, load R2 into DDR and go to 5
+        ; 12. If not, go to 9
+        ; ================ Return Routine =================
+        ; restore R5
+        ; restore R3 from stack
+        ; restore R2 from stack
+        ; restore R1 from stack
+        ; return from interrupt
+        ST	R5,	SAVE_R5 ; save R5 in memory because we need R5 for stack operations
+        AND R5, R5, #0 ; clear R5
+        ADD	R5,	R5, R1 ; store R1 in R5
+        JSR PUSH ; push R1 to stack
+        AND R5, R5, #0 ; clear R5
+        ADD	R5,	R5, R2 ; store R2 in R5
+        JSR PUSH ; push R2 to stack
+        AND R5, R5, #0 ; clear R5
+        ADD	R5,	R5, R3 ; store R3 in R5
+        JSR PUSH ; push R3 to stack
+        ADD	R1,	R0,	#-1 ; minus 1 from R0 and store in R1
+DISPLAY
+        ADD R1, R1, #1 ; add 1 to R1
+        LDR	R2,	R1,	#0 ; load R2 with value pointed by R1
+        BRz RET_TRAP_PUTS ; return from this routine
+CHECK_DISPLAY 
+        LD	R3,	DSR_LOC ; load dsr into R
+        BRn DISPLAYC ; display character if display is ready
+        BRzp CHECK_DISPLAY ; otherwise check display again
+DISPLAYC 
+        STI	R2,	DDR_LOC ; store R2 into the display data register
+        BRnzp DISPLAY ; go run display
+RET_TRAP_PUTS
+    AND R3, R3, #0 ; clear R3
+    JSR POP        ; load R3 from stack
+    ADD R3, R3, R5 ; store R5 (value popped from stack) into R3
+    AND R2, R2, #0 ; clear R2
+    JSR POP        ; pop R2 from stack
+    ADD R2, R2, R5 ; store R5 in R2
+    AND R1, R1, #0 ; clear R1
+    JSR POP        ; pop R1 from the stack
+    ADD R1, R1, R5 ; store R5 in R1
+    LD	R5,	SAVE_R5 ; restore R5 from memory
+
+
+
+SAVE_R5 .BLKW	1
 
 ; TODO Handle invalid system call. Ideally we should halt the CPU
 BAD_TRAP ADD    R0,	R0,	#0 ; Add 0 to R0 essentially leave it unchanged

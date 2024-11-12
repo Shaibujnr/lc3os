@@ -65,3 +65,30 @@ to be called and also loads R7 with the return address (the address immediately 
 * Privilege mode exception - x00 => x0100 (Processor extends)
 * Illegal Opcode - x01 => x0101 (Processor extends)
 * ACV exception - x02 => x0102 (Processor extends)
+
+# MPR
+0000 -> 0FFF
+1000 -> 1FFF
+2000 -> 2FFF
+3000 -> 3FFF
+4000 -> 4FFF
+5000 -> 5FFF
+6000 -> 6FFF
+7000 -> 7FFF
+8000 -> 8FFF
+9000 -> 9FFF
+A000 -> AFFF
+B000 -> BFFF
+C000 -> CFFF
+D000 -> DFFF
+E000 -> EFFF
+F000 -> FFFF
+
+0FF8 => 0000 1111 1111 1000
+
+
+For PennSimm simulator PSR[15] = 1 is supervisor mode and PSR[15] = 0 is user mode
+
+
+# NEXT 
+* Supervisor stack seems to be starting from x0000 figure out a way to change the supervisor stack (SAVED_SSP)
